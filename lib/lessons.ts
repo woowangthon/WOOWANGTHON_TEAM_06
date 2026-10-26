@@ -5,13 +5,20 @@ import { LessonSchema, type Lang, type Lesson } from '@/lib/types';
 
 export class RateLimitError extends Error {}
 
+export function hourlyCap(): number {
+  const n = Number(process.env.LLM_HOURLY_CAP || 100);
+  return Number.isNaN(n) ? 100 : n;
+}
+
 export async function getLesson(
   instructionKo: string,
   lang: Lang,
   level: number,
 ): Promise<{ lesson: Lesson; mock: boolean }> {
   const db = getDb();
-  const key = createHash('sha256').update(`${instructionKo}|${lang}|${level}`).digest('hex');
+  const mock = isMock();
+  const model = mock ? 'mock' : process.env.LLM_MODEL || 'claude-haiku-5-5';
+  const key = createHash('sha256').update(`${instructionKo}|${lang}|${level}|${model}`).digest('hex');
   const hit = await db.execute({ sql: 'SELECT json, mock FROM lessons WHERE key = ?', args: [key] });
   if (hit.rows[0]) {
     return { lesson: LessonSchema.parse(JSON.parse(String(hit.rows[0].json))), mock: hit.rows[0].mock === 1 };
@@ -19,7 +26,7 @@ export async function getLesson(
 
   const hour = new Date().toISOString().slice(0, 13);
   const used = await db.execute({ sql: 'SELECT count FROM llm_calls WHERE hour = ?', args: [hour] });
-  if (Number(used.rows[0]?.count ?? 0) >= Number(process.env.LLM_HOURLY_CAP ?? 100)) {
+  if (Number(used.rows[0]?.count ?? 0) >= hourlyCap()) {
     throw new RateLimitError('hourly LLM call cap reached');
   }
   await db.execute({
@@ -27,7 +34,6 @@ export async function getLesson(
     args: [hour],
   });
 
-  const mock = isMock();
   const lesson = await generateLesson(instructionKo, lang, level);
   await db.execute({
     sql: 'INSERT OR REPLACE INTO lessons (key, json, mock) VALUES (?, ?, ?)',

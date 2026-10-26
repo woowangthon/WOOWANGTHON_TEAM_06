@@ -14,7 +14,7 @@ async function ask<T extends z.ZodType>(prompt: string, schema: T): Promise<z.in
   client ??= new Anthropic();
   try {
     const res = await client.messages.parse({
-      model: process.env.LLM_MODEL ?? 'claude-haiku-5-5',
+      model: process.env.LLM_MODEL || 'claude-haiku-5-5',
       max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }],
       output_config: { effort: 'medium', format: zodOutputFormat(schema) },

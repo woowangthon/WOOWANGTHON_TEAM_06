@@ -64,7 +64,7 @@ export function summarize(rows: Row[]): string {
 }
 
 export function reportFor(rows: Row[], langs: Lang[], itemCount: number) {
-  const model = process.env.LLM_MODEL ?? 'claude-haiku-5-5';
+  const model = process.env.LLM_MODEL || 'claude-haiku-5-5';
   const date = new Date().toISOString().slice(0, 10);
   const mock = isMock();
   const header = [
