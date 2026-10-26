@@ -44,3 +44,6 @@ next-env.d.ts
 
 # local db
 local.db*
+
+# validation output from mock runs
+results/*-MOCK-*
