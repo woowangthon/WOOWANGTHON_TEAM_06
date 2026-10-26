@@ -104,7 +104,7 @@ export default function WorkerPage({ params }: PageProps<'/w/[id]'>) {
       </main>
     );
 
-  if (!worker || !lesson) return <main className="page worker-page"><p className="sub">...</p></main>;
+  if (!worker || !lesson) return <main className="page worker-page"><p className="sub">설명을 준비하고 있어요 / Preparing…</p></main>;
 
   const { ui } = lesson;
   const done = worker.status === 'passed' || worker.status === 'approved';
@@ -113,7 +113,7 @@ export default function WorkerPage({ params }: PageProps<'/w/[id]'>) {
     <main className="page worker-page" lang={worker.lang}>
       <MockBadge show={mock} />
       {done ? (
-        <p className="card result"><span className="emoji">✅</span>{ui.passed}</p>
+        <p className="card result"><span className="emoji">✅</span>{worker.status === 'approved' ? '투입 확인됨 / Approved by supervisor' : ui.passed}</p>
       ) : (
         <>
           {worker.status === 'failed' ? (

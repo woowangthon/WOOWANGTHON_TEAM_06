@@ -28,7 +28,7 @@
 
 ## 사용자 흐름
 
-1. 반장이 교육 세션을 만들고 한국어로 작업지시를 입력(텍스트 또는 음성)합니다. QR/링크가 생성됩니다.
+1. 반장이 교육 세션을 만들고 한국어로 작업지시를 입력(텍스트 또는 음성)합니다. QR/링크가 생성됩니다. 반장 화면 주소(`/s/<관리 ID>`)는 비공개 링크입니다. QR에는 근로자 참여 주소(`/j/<참여 ID>`)만 담기며, 재설명·투입 요청은 관리 ID가 있어야 합니다. 관리 주소를 공유하지 마세요.
 2. 근로자가 폰으로 QR에 접속해 이름과 언어를 고릅니다. 로그인은 없습니다.
 3. AI가 근로자 모국어의 쉬운 말 단계별 설명(단계마다 이모지)과 객관식 확인 질문 2~3개를 만듭니다.
 4. 근로자가 답하면 하나라도 틀릴 때 반장 화면에 🔴, 모두 맞으면 🟢가 표시됩니다.
@@ -38,7 +38,7 @@
 
 | 구분 | 내용 |
 |---|---|
-| 직접 구현 | 세션·근로자 상태 흐름, 객관식 채점(🔴/🟢 판정), 재설명 단계(level) 관리, 지시문 단위 결과 캐시, 시간당 호출 상한, 반장/근로자 화면, 검증 스크립트(`scripts/validate.ts`), 개발 하네스 가드(아래) |
+| 직접 구현 | 세션·근로자 상태 흐름, 객관식 채점(🔴/🟢 판정), 재설명 단계(level) 관리, 지시문 단위 결과 캐시, 시간당 생성 시도 상한, 반장/근로자 화면, 검증 스크립트(`scripts/validate.ts`), 개발 하네스 가드(아래) |
 | 외부 기술 | Claude API (기본 `claude-haiku-5-5`, `LLM_MODEL`로 교체), Turso/libSQL (DB), Vercel (배포), `qrcode` (QR 생성), 브라우저 Web Speech API (음성 입력), Next.js |
 
 LLM 호출은 `lib/llm.ts` 한 파일에만 있어 다른 제공사로 바꿀 때 그 파일만 고치면 됩니다.
@@ -85,7 +85,7 @@ npm test           # 테스트는 항상 mock
 | `DATABASE_URL` | Turso/libSQL URL. 비우면 로컬 `file:local.db` | `file:local.db` |
 | `TURSO_AUTH_TOKEN` | Turso 인증 토큰 (로컬 파일 DB에는 불필요) | (없음) |
 | `LLM_MOCK` | `1`이면 항상 고정 샘플 응답 사용 | `0` (`npm run dev`는 `1`) |
-| `LLM_HOURLY_CAP` | 시간당 실제 LLM 호출 상한 (캐시 적중은 제외) | `100` |
+| `LLM_HOURLY_CAP` | 시간당 생성 시도 상한 (캐시 적중은 제외, 재시도·검증 호출은 세지 않음) | `100` |
 | `LLM_MODEL` | 사용할 Claude 모델 | `claude-haiku-5-5` |
 
 ## mock 표시 정책
@@ -99,8 +99,8 @@ AI 코딩 도구로 개발했기 때문에 실수로 API를 쓰거나 경계가 
 - LLM 경계 테스트(`tests/boundary.test.ts`): `@anthropic-ai/sdk`를 import하는 파일이 정확히 `lib/llm.ts` 하나인지 양방향으로 검사 (위반 탐지기 자체도 테스트)
 - 테스트 환경에서 API 키를 제거하고 기본 mock으로 고정 (`tests/setup.ts`)
 - 실제 API를 쓰는 명령(`validate.ts`, `npm run dev:live`)은 `.claude/settings.json`에서 실행 전 승인 필요, `.env` 읽기는 차단
-- CI(`.github/workflows/ci.yml`) 단일 job: `npm ci` → `lint` → `next build` → `tsc --noEmit` → `npm test` (`LLM_MOCK=1`)
+- CI(`.github/workflows/ci.yml`) 단일 job: `npm ci --ignore-scripts` → `lint` → `next build` → `tsc --noEmit` → `npm test` (`LLM_MOCK=1`)
 
 ## 구조
 
-`app/` 화면·API, `components/` 공용 UI, `lib/` 로직(`llm.ts` LLM 호출, `lessons.ts` 캐시·상한, `sessions.ts` 상태), `scripts/` 검증, `tests/` 테스트, `docs/superpowers/specs/2026-10-26-worker-instruction-design.md` 설계 문서.
+`app/` 화면(`/` 입력, `/s/[adminId]` 반장 대시보드, `/j/[id]` 참여, `/w/[id]` 근로자)·API, `components/` 공용 UI, `lib/` 로직(`llm.ts` LLM 호출, `lessons.ts` 캐시·상한, `sessions.ts` 상태), `scripts/` 검증, `tests/` 테스트, `docs/superpowers/specs/2026-10-26-worker-instruction-design.md` 설계 문서.
