@@ -4,6 +4,7 @@ import { getLesson } from '@/lib/lessons';
 import type { Lang, Lesson, Worker, WorkerStatus } from '@/lib/types';
 
 export class ValidationError extends Error {}
+export class ForbiddenError extends Error {}
 export class NotFoundError extends Error {}
 export class StaleLevelError extends Error {}
 
@@ -20,15 +21,21 @@ function toWorker(r: Row): Worker {
   };
 }
 
-export async function createSession(instructionKo: string): Promise<string> {
+export async function createSession(instructionKo: string): Promise<{ id: string; adminId: string }> {
   const text = instructionKo.trim();
   if (text.length < 1 || text.length > 500) throw new ValidationError('instruction must be 1-500 chars');
   const id = randomUUID();
+  const adminId = randomUUID();
   await getDb().execute({
-    sql: 'INSERT INTO sessions (id, instruction_ko, created_at) VALUES (?, ?, ?)',
-    args: [id, text, Date.now()],
+    sql: 'INSERT INTO sessions (id, instruction_ko, created_at, admin_id) VALUES (?, ?, ?, ?)',
+    args: [id, text, Date.now(), adminId],
   });
-  return id;
+  return { id, adminId };
+}
+
+export async function getSessionByAdmin(adminId: string) {
+  const r = await getDb().execute({ sql: 'SELECT id FROM sessions WHERE admin_id = ?', args: [adminId] });
+  return r.rows[0] ? getSession(String(r.rows[0].id)) : null;
 }
 
 export async function getSession(id: string) {
@@ -68,29 +75,35 @@ async function requireWorker(workerId: string): Promise<Worker> {
   return w;
 }
 
-async function setStatus(workerId: string, status: WorkerStatus) {
-  await getDb().execute({ sql: 'UPDATE workers SET status = ? WHERE id = ?', args: [status, workerId] });
+async function requireAdmin(workerId: string, key: string): Promise<void> {
+  const w = await requireWorker(workerId);
+  const s = await getDb().execute({ sql: 'SELECT admin_id FROM sessions WHERE id = ?', args: [w.sessionId] });
+  if (!key || s.rows[0]?.admin_id !== key) throw new ForbiddenError('forbidden');
 }
 
 export async function submitAnswers(workerId: string, level: number, answers: number[]): Promise<{ passed: boolean }> {
   const w = await requireWorker(workerId);
-  if (level !== w.level) throw new StaleLevelError('level changed');
+  if (level !== w.level || w.status !== 'pending') throw new StaleLevelError('level changed');
   const session = (await getSession(w.sessionId))!;
   const { lesson } = await getLesson(session.instructionKo, w.lang, w.level);
   const passed = grade(lesson, answers);
-  await setStatus(workerId, passed ? 'passed' : 'failed');
+  const res = await getDb().execute({
+    sql: "UPDATE workers SET status = ? WHERE id = ? AND level = ? AND status = 'pending'",
+    args: [passed ? 'passed' : 'failed', workerId, level],
+  });
+  if (!res.rowsAffected) throw new StaleLevelError('level changed');
   return { passed };
 }
 
-export async function requestRetry(workerId: string): Promise<void> {
-  await requireWorker(workerId);
+export async function requestRetry(workerId: string, key: string): Promise<void> {
+  await requireAdmin(workerId, key);
   await getDb().execute({
     sql: "UPDATE workers SET level = level + 1, status = 'pending' WHERE id = ?",
     args: [workerId],
   });
 }
 
-export async function approveWorker(workerId: string): Promise<void> {
-  await requireWorker(workerId);
-  await setStatus(workerId, 'approved');
+export async function approveWorker(workerId: string, key: string): Promise<void> {
+  await requireAdmin(workerId, key);
+  await getDb().execute({ sql: "UPDATE workers SET status = 'approved' WHERE id = ?", args: [workerId] });
 }

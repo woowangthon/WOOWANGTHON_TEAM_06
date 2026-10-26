@@ -24,8 +24,8 @@ export default function Home() {
         body: JSON.stringify({ instruction: text }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? '요청에 실패했습니다');
-      router.push(`/s/${data.id}`);
+      if (!res.ok) throw new Error(res.status === 400 ? '작업지시를 1~500자로 입력해 주세요' : '요청에 실패했습니다');
+      router.push(`/s/${data.adminId}`);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -41,6 +41,7 @@ export default function Home() {
         onChange={(e) => setText(e.target.value)}
         placeholder="예) 오늘 3층 비계 작업은 안전고리를 반드시 체결하고 올라갑니다."
         rows={7}
+        maxLength={MAX}
         aria-label="작업지시"
       />
       <div className="row between">
@@ -50,7 +51,7 @@ export default function Home() {
         <VoiceInput onText={append} />
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <button className="btn primary big" onClick={submit} disabled={busy || !text.trim()}>
+      <button className="btn primary big" onClick={submit} disabled={busy || !text.trim() || text.length > MAX}>
         {busy ? '만드는 중...' : '교육 시작'}
       </button>
     </main>

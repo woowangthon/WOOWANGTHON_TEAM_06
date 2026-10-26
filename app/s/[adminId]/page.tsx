@@ -14,8 +14,8 @@ const STATUS: Record<WorkerStatus, { icon: string; label: string }> = {
   approved: { icon: '✅', label: '투입' },
 };
 
-export default function Dashboard({ params }: PageProps<'/s/[id]'>) {
-  const { id } = use(params);
+export default function Dashboard({ params }: PageProps<'/s/[adminId]'>) {
+  const { adminId } = use(params);
   const [data, setData] = useState<SessionData | null>(null);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState('');
@@ -25,11 +25,11 @@ export default function Dashboard({ params }: PageProps<'/s/[id]'>) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sessions/${id}`, { cache: 'no-store' });
+      const res = await fetch(`/api/sessions/admin/${adminId}`, { cache: 'no-store' });
       if (res.status === 404) return setMissing(true);
       if (res.ok) setData(await res.json());
     } catch {}
-  }, [id]);
+  }, [adminId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch; setState happens after await
@@ -38,20 +38,22 @@ export default function Dashboard({ params }: PageProps<'/s/[id]'>) {
     return () => clearInterval(t);
   }, [load]);
 
+  const sessionId = data?.id;
   useEffect(() => {
-    const url = `${window.location.origin}/j/${id}`;
+    if (!sessionId) return;
+    const url = `${window.location.origin}/j/${sessionId}`;
     QRCode.toDataURL(url, { margin: 1, width: 240 })
       .catch(() => '')
       .then((dataUrl) => {
         setJoinUrl(url);
         setQr(dataUrl);
       });
-  }, [id]);
+  }, [sessionId]);
 
   const act = async (workerId: string, action: 'retry' | 'approve') => {
     setError('');
     try {
-      const res = await fetch(`/api/workers/${workerId}/${action}`, { method: 'POST' });
+      const res = await fetch(`/api/workers/${workerId}/${action}?key=${adminId}`, { method: 'POST' });
       if (!res.ok) setError((await res.json().catch(() => ({}))).error ?? '요청에 실패했습니다');
     } catch {
       setError('요청에 실패했습니다');
@@ -105,7 +107,8 @@ export default function Dashboard({ params }: PageProps<'/s/[id]'>) {
                   <span className="sub">{LANG_LABELS[w.lang]}</span>
                 </div>
                 <div className="state">
-                  {STATUS[w.status].icon} {STATUS[w.status].label}
+                  <span>{STATUS[w.status].icon}</span>
+                  {STATUS[w.status].label}
                   {w.level > 0 && <span className="level"> · 재설명 {w.level}회</span>}
                 </div>
                 <div className="actions">

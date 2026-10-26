@@ -4,9 +4,9 @@ import { mockLesson } from '@/lib/fixtures/mock-lesson';
 import { toResponse } from '@/lib/http';
 import { LlmError } from '@/lib/llm';
 import { RateLimitError } from '@/lib/lessons';
-import { NotFoundError, StaleLevelError, ValidationError } from '@/lib/sessions';
+import { ForbiddenError, NotFoundError, StaleLevelError, ValidationError } from '@/lib/sessions';
 import { POST as createSession } from '@/app/api/sessions/route';
-import { GET as getSession } from '@/app/api/sessions/[id]/route';
+import { GET as getSession } from '@/app/api/sessions/admin/[adminId]/route';
 import { POST as join } from '@/app/api/sessions/[id]/workers/route';
 import { GET as getWorker } from '@/app/api/workers/[id]/route';
 import { GET as getLesson } from '@/app/api/workers/[id]/lesson/route';
@@ -17,12 +17,14 @@ import { POST as approve } from '@/app/api/workers/[id]/approve/route';
 const post = (body: unknown) =>
   new Request('http://x/api', { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) });
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+const adminCtx = (adminId: string) => ({ params: Promise.resolve({ adminId }) });
+const keyed = (key: string) => new Request(`http://x/api?key=${key}`, { method: 'POST' });
 const rightAnswers = mockLesson.quiz.map((q) => q.answerIndex);
 
 async function setup() {
-  const { id } = await (await createSession(post({ instruction: '안전모를 쓰세요' }))).json();
+  const { id, adminId } = await (await createSession(post({ instruction: '안전모를 쓰세요' }))).json();
   const { workerId } = await (await join(post({ name: '민수', lang: 'vi' }), ctx(id))).json();
-  return { id, workerId };
+  return { id, adminId, workerId };
 }
 
 beforeEach(async () => {
@@ -53,7 +55,7 @@ test('join unknown session → 404', async () => {
 });
 
 test('GET unknown session and worker → 404', async () => {
-  expect((await getSession(new Request('http://x'), ctx('nope'))).status).toBe(404);
+  expect((await getSession(new Request('http://x'), adminCtx('nope'))).status).toBe(404);
   expect((await getWorker(new Request('http://x'), ctx('nope'))).status).toBe(404);
 });
 
@@ -65,10 +67,27 @@ test('answers with malformed body → 400', async () => {
 });
 
 test('stale answers → 409', async () => {
-  const { workerId } = await setup();
-  await retry(post({}), ctx(workerId));
+  const { adminId, workerId } = await setup();
+  await retry(keyed(adminId), ctx(workerId));
   const res = await answers(post({ level: 0, answers: rightAnswers }), ctx(workerId));
   expect(res.status).toBe(409);
+});
+
+test('retry and approve without or with a wrong key → 403, right key → ok', async () => {
+  const { id, adminId, workerId } = await setup();
+  for (const act of [retry, approve]) {
+    for (const req of [post({}), keyed(''), keyed('wrong'), keyed(id)]) {
+      expect((await act(req, ctx(workerId))).status).toBe(403);
+    }
+  }
+  expect(await (await getWorker(new Request('http://x'), ctx(workerId))).json()).toMatchObject({ status: 'pending', level: 0 });
+  expect((await retry(keyed(adminId), ctx(workerId))).status).toBe(200);
+  expect((await approve(keyed(adminId), ctx(workerId))).status).toBe(200);
+});
+
+test('join id cannot read the admin view', async () => {
+  const { id } = await setup();
+  expect((await getSession(new Request('http://x'), adminCtx(id))).status).toBe(404);
 });
 
 test('lesson when rate limited → 429', async () => {
@@ -79,33 +98,35 @@ test('lesson when rate limited → 429', async () => {
 });
 
 test('full flow: create → join → lesson → answers → retry → approve', async () => {
-  const { id, workerId } = await setup();
+  const { id, adminId, workerId } = await setup();
 
-  const session = await (await getSession(new Request('http://x'), ctx(id))).json();
+  const session = await (await getSession(new Request('http://x'), adminCtx(adminId))).json();
   expect(session).toMatchObject({ id, instructionKo: '안전모를 쓰세요', mock: true });
   expect(session.workers).toEqual([{ id: workerId, sessionId: id, name: '민수', lang: 'vi', status: 'pending', level: 0 }]);
 
   const lessonRes = await (await getLesson(new Request('http://x'), ctx(workerId))).json();
   expect(lessonRes).toMatchObject({ mock: true, level: 0 });
   expect(lessonRes.lesson.quiz).toHaveLength(mockLesson.quiz.length);
+  expect(JSON.stringify(lessonRes)).not.toContain('answerIndex');
 
   expect(await (await answers(post({ level: 0, answers: [] }), ctx(workerId))).json()).toEqual({ passed: false });
   expect((await (await getWorker(new Request('http://x'), ctx(workerId))).json()).status).toBe('failed');
 
-  expect(await (await retry(post({}), ctx(workerId))).json()).toEqual({ ok: true });
+  expect(await (await retry(keyed(adminId), ctx(workerId))).json()).toEqual({ ok: true });
   const w = await (await getWorker(new Request('http://x'), ctx(workerId))).json();
   expect(w).toMatchObject({ status: 'pending', level: 1 });
   expect((await (await getLesson(new Request('http://x'), ctx(workerId))).json()).level).toBe(1);
 
   expect(await (await answers(post({ level: 1, answers: rightAnswers }), ctx(workerId))).json()).toEqual({ passed: true });
 
-  expect(await (await approve(post({}), ctx(workerId))).json()).toEqual({ ok: true });
+  expect(await (await approve(keyed(adminId), ctx(workerId))).json()).toEqual({ ok: true });
   expect((await (await getWorker(new Request('http://x'), ctx(workerId))).json()).status).toBe('approved');
 });
 
 test('toResponse maps errors to status codes and hides 500 details', async () => {
   const status = (e: unknown) => toResponse(e).status;
   expect(status(new ValidationError('x'))).toBe(400);
+  expect(status(new ForbiddenError('x'))).toBe(403);
   expect(status(new NotFoundError('x'))).toBe(404);
   expect(status(new StaleLevelError('x'))).toBe(409);
   expect(status(new RateLimitError('x'))).toBe(429);

@@ -2,11 +2,15 @@ import { z } from 'zod';
 import { initDb } from '@/lib/db';
 import { RateLimitError } from '@/lib/lessons';
 import { LlmError } from '@/lib/llm';
-import { NotFoundError, StaleLevelError, ValidationError } from '@/lib/sessions';
+import { ForbiddenError, NotFoundError, StaleLevelError, ValidationError } from '@/lib/sessions';
+
+let ready: Promise<void> | undefined;
+const ensureDb = () => (ready ??= initDb().catch((e) => { ready = undefined; throw e; }));
 
 export function toResponse(e: unknown): Response {
   const status =
     e instanceof ValidationError ? 400
+    : e instanceof ForbiddenError ? 403
     : e instanceof NotFoundError ? 404
     : e instanceof StaleLevelError ? 409
     : e instanceof RateLimitError ? 429
@@ -21,7 +25,7 @@ export function toResponse(e: unknown): Response {
 
 export async function handle(fn: () => Promise<unknown>): Promise<Response> {
   try {
-    await initDb();
+    await ensureDb();
     return Response.json(await fn());
   } catch (e) {
     return toResponse(e);
