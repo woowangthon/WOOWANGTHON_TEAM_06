@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic, { AnthropicError, APIError } from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import { mockLesson } from '@/lib/fixtures/mock-lesson';
@@ -12,13 +12,18 @@ let client: Anthropic | undefined;
 
 async function ask<T extends z.ZodType>(prompt: string, schema: T): Promise<z.infer<T> | null> {
   client ??= new Anthropic();
-  const res = await client.messages.parse({
-    model: process.env.LLM_MODEL ?? 'claude-haiku-5-5',
-    max_tokens: 16000,
-    messages: [{ role: 'user', content: prompt }],
-    output_config: { effort: 'medium', format: zodOutputFormat(schema) },
-  });
-  return res.stop_reason === 'refusal' ? null : res.parsed_output;
+  try {
+    const res = await client.messages.parse({
+      model: process.env.LLM_MODEL ?? 'claude-haiku-5-5',
+      max_tokens: 16000,
+      messages: [{ role: 'user', content: prompt }],
+      output_config: { effort: 'medium', format: zodOutputFormat(schema) },
+    });
+    return res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens' ? null : res.parsed_output;
+  } catch (e) {
+    if (e instanceof AnthropicError && !(e instanceof APIError)) return null;
+    throw e;
+  }
 }
 
 async function askOnce<T extends z.ZodType>(prompt: string, schema: T): Promise<z.infer<T>> {
