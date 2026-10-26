@@ -343,3 +343,43 @@ test('summarize shows per-language averages', () => {
 - [ ] **Step 3: 사용자 작업** — Turso DB 생성, Vercel 프로젝트 연결, 환경변수 입력(`LLM_MOCK=0`), Anthropic 콘솔 월 지출 한도 설정, GitHub Public 저장소 생성 후 push
 - [ ] **Step 4:** 배포 URL을 실제 폰으로 열어 Task 7 Step 2 시나리오 재확인. **MockBadge 안 보이는지** 확인 (실제 API 동작)
 - [ ] **Step 5:** 커밋 `docs: add readme and env example`, push. 제출용 main 커밋 해시 기록
+
+---
+
+### Task 10: 하네스 가드 (Task 8 전에 실행)
+
+사용자 요청으로 추가. "개발·테스트 중 실제 API 호출 금지"와 "LLM 호출은 `lib/llm.ts` 한 파일"을 사람 기억이 아니라 코드로 강제한다. 참고한 기법: 런타임+정적 이중 차단, 자식 환경변수 스크러빙, 양방향(정합성+완전성) 구조 가드, 게이트 민감도 자기검증, 의존성 순서를 코드화한 단일 CI job, 최소 권한.
+
+**Files:**
+- Modify: `tests/setup.ts`, `package.json`
+- Create: `lib/boundary.ts`, `tests/boundary.test.ts`, `.github/workflows/ci.yml`
+
+**Interfaces:**
+- Produces: `findSdkImporters(files: { path: string; content: string }[]): string[]` — `@anthropic-ai/sdk`(하위 경로 포함)를 import/require하는 파일 경로를 정렬해서 반환
+
+- [ ] **Step 1: 실패 테스트** `tests/boundary.test.ts`
+
+```ts
+test('checker flags a violating file', () => {
+  expect(findSdkImporters([{ path: 'app/x.ts', content: "import Anthropic from '@anthropic-ai/sdk'" }])).toEqual(['app/x.ts']);
+});
+test('checker flags subpath and require forms', () => {
+  // '@anthropic-ai/sdk/helpers/zod' import, require('@anthropic-ai/sdk') 둘 다 잡힘
+});
+test('checker ignores the string in a comment-free unrelated file', () => { /* 'anthropic' 단어만 있는 파일은 안 잡힘 */ });
+test('only lib/llm.ts imports the SDK — exactly', async () => {
+  // app/, components/, lib/, scripts/ 아래 .ts/.tsx/.mjs 전부 읽어서
+  expect(findSdkImporters(repoFiles)).toEqual(['lib/llm.ts']);
+});
+test('tests never see a real API key', () => {
+  expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+  expect(process.env.LLM_MOCK).toBe('1');
+});
+```
+마지막 두 테스트가 양방향 가드: 다른 파일이 SDK를 쓰면 실패(정합성), `lib/llm.ts`가 이름이 바뀌거나 SDK를 안 쓰게 되면 실패(완전성 — 가드가 조용히 무력화되는 것 방지).
+
+- [ ] **Step 2:** FAIL 확인
+- [ ] **Step 3:** `lib/boundary.ts` 구현. `tests/setup.ts`에 `delete process.env.ANTHROPIC_API_KEY` 추가(런타임 차단: 셸에 키가 있어도 테스트는 절대 실제 호출 못 함). `package.json` `"dev": "LLM_MOCK=1 next dev"`, `"dev:live": "next dev"` (기본 dev가 mock — 실제 호출은 명시적으로 고른 경우만)
+- [ ] **Step 4:** PASS 확인
+- [ ] **Step 5:** `.github/workflows/ci.yml`: `pull_request` + `push`(main, feat/**) 트리거, `permissions: contents: read`, 단일 `check` job, Node 24, 순서 `npm ci --ignore-scripts` → `npm run lint` → `npx next build` → `npx tsc --noEmit` → `npm test`. job env `LLM_MOCK: '1'`, 시크릿 사용 안 함. build가 typecheck보다 먼저인 이유(Next 라우트 타입 생성)를 yml 주석 한 줄로 남김. 로컬에서 `rm -rf node_modules .next && npm ci --ignore-scripts && npm run lint && npx next build && npx tsc --noEmit && npm test`로 같은 순서 검증
+- [ ] **Step 6:** 커밋 `chore: add harness guards for llm boundary and ci`
