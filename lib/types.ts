@@ -16,6 +16,19 @@ export const LANG_LABELS: Record<Lang, string> = {
   zh: '중국어',
 };
 
+export const LANG_NATIVE: Record<Lang, string> = {
+  vi: 'Tiếng Việt',
+  ne: 'नेपाली',
+  en: 'English',
+  km: 'ភាសាខ្មែរ',
+  id: 'Bahasa Indonesia',
+  uz: 'Oʻzbekcha',
+  my: 'မြန်မာ',
+  th: 'ภาษาไทย',
+  mn: 'Монгол',
+  zh: '中文',
+};
+
 const Item = z.object({ emoji: z.string(), text: z.string() });
 
 export const LessonSchema = z.object({

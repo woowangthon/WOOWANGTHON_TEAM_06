@@ -147,3 +147,46 @@ textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
 .worker .level { font-weight: 400; color: var(--muted); }
 .worker .actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
 .worker .actions:empty { display: none; }
+
+.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 1.1rem; }
+.field input,
+.field select {
+  min-height: 56px;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.field input:focus,
+.field select:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+.worker-page { font-size: 1.15rem; }
+.worker-page .btn { min-height: 56px; font-size: 1.15rem; }
+.step { display: flex; gap: 16px; align-items: center; }
+.step .emoji { font-size: 2.6rem; line-height: 1; flex: none; }
+.step p { font-size: 1.25rem; }
+.question { font-size: 1.25rem; margin-bottom: 12px; }
+.options { display: flex; flex-direction: column; gap: 10px; }
+.opt {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 1.15rem;
+  text-align: left;
+  color: var(--text);
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.opt .emoji { font-size: 2.2rem; line-height: 1; flex: none; }
+.opt.sel { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 16%, var(--card)); font-weight: 700; }
+.result { text-align: center; font-size: 1.5rem; font-weight: 700; }
+.result .emoji { display: block; font-size: 4rem; }
